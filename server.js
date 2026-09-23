@@ -67,11 +67,11 @@ let memUsers = [];
 let nextId = 1;
 
 // ─────────────────────────────────────────────────────────────
-// ROUTES
+// ROUTES (Supporting route aliases to handle /api/users, /users, /api/api/users)
 // ─────────────────────────────────────────────────────────────
 
 // Health check
-app.get('/api/health', async (req, res) => {
+app.get(['/api/health', '/health', '/api/api/health'], async (req, res) => {
   if (db) {
     try {
       const result = await db.query('SELECT COUNT(*) FROM users WHERE role=$1', ['USER']);
@@ -84,7 +84,7 @@ app.get('/api/health', async (req, res) => {
 });
 
 // POST /api/login
-app.post('/api/login', async (req, res) => {
+app.post(['/api/login', '/login', '/api/api/login'], async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, message: 'Username and password required' });
 
@@ -106,7 +106,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // POST /api/users — Admin creates a user
-app.post('/api/users', async (req, res) => {
+app.post(['/api/users', '/users', '/api/api/users'], async (req, res) => {
   const { username, password, companyName, ownerName, email, contact, altContact, address, description } = req.body;
   if (!username || !password) return res.status(400).json({ success: false, message: 'Username and password are required' });
   const clean = username.toLowerCase().replace(/\s+/g, '');
@@ -119,7 +119,7 @@ app.post('/api/users', async (req, res) => {
         'INSERT INTO users (username, password, company_name, owner_name, email, contact, alt_contact, address, description, role) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
         [clean, password, companyName, ownerName, email, contact, altContact, address, description, 'USER']
       );
-      console.log(`New user: ${clean}`);
+      console.log(`New user created: ${clean}`);
       return res.status(201).json({ success: true, message: `User "${clean}" created!`, username: clean, loginUrl: `/${clean}-user/dashboard` });
     } catch (e) {
       return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
@@ -129,12 +129,12 @@ app.post('/api/users', async (req, res) => {
   // In-memory fallback
   if (memUsers.find(u => u.username === clean)) return res.status(409).json({ success: false, message: `Username "${clean}" already exists` });
   memUsers.push({ id: nextId++, username: clean, password, companyName, ownerName, email, contact, altContact, address, description, role: 'USER', createdAt: new Date().toISOString() });
-  console.log(`New user: ${clean}`);
+  console.log(`New user created: ${clean}`);
   return res.status(201).json({ success: true, message: `User "${clean}" created!`, username: clean, loginUrl: `/${clean}-user/dashboard` });
 });
 
 // GET /api/users
-app.get('/api/users', async (req, res) => {
+app.get(['/api/users', '/users', '/api/api/users'], async (req, res) => {
   if (db) {
     try {
       const result = await db.query('SELECT id, username, company_name, owner_name, email, contact, created_at FROM users WHERE role=$1', ['USER']);
@@ -148,7 +148,7 @@ app.get('/api/users', async (req, res) => {
 });
 
 // DELETE /api/users/:username
-app.delete('/api/users/:username', async (req, res) => {
+app.delete(['/api/users/:username', '/users/:username', '/api/api/users/:username'], async (req, res) => {
   const { username } = req.params;
   if (db) {
     try {
