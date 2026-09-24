@@ -45,10 +45,12 @@ if (process.env.DATABASE_URL) {
         address TEXT,
         description TEXT,
         role VARCHAR(20) DEFAULT 'USER',
+        data TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       )
     `).then(() => {
       console.log('✅ Connected to PostgreSQL database');
+      db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS data TEXT;').catch(() => {});
     }).catch(err => {
       console.error('❌ DB table creation error:', err.message);
     });
@@ -162,6 +164,189 @@ app.delete(['/api/users/:username', '/users/:username', '/api/api/users/:usernam
   if (idx === -1) return res.status(404).json({ success: false, message: 'User not found' });
   memUsers.splice(idx, 1);
   return res.json({ success: true });
+});
+
+// ─────────────────────────────────────────────────────────────
+// DATA BACKUP & RESTORE ENDPOINTS
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/users/:username/data
+app.get(['/api/users/:username/data', '/users/:username/data', '/api/api/users/:username/data', '/api/backup/:username', '/backup/:username'], async (req, res) => {
+  const { username } = req.params;
+  if (db) {
+    try {
+      const result = await db.query('SELECT username, company_name, owner_name, email, contact, address, description, data FROM users WHERE username=$1', [username]);
+      if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+      const user = result.rows[0];
+      const parsedData = user.data ? (typeof user.data === 'string' ? JSON.parse(user.data) : user.data) : {};
+      return res.json({
+        success: true,
+        companyProfile: {
+          username: user.username,
+          companyName: user.company_name,
+          ownerName: user.owner_name,
+          email: user.email,
+          contact: user.contact,
+          address: user.address,
+          description: user.description
+        },
+        billingHistory: parsedData.billingHistory || [],
+        employees: parsedData.employees || [],
+        complianceRecords: parsedData.complianceRecords || [],
+        data: parsedData,
+        exportedAt: new Date().toISOString(),
+        version: "1.0"
+      });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
+    }
+  }
+
+  const u = memUsers.find(x => x.username === username);
+  if (!u) return res.status(404).json({ success: false, message: 'User not found' });
+  const parsedData = u.data ? (typeof u.data === 'string' ? JSON.parse(u.data) : u.data) : {};
+  return res.json({
+    success: true,
+    companyProfile: {
+      username: u.username,
+      companyName: u.companyName,
+      ownerName: u.ownerName,
+      email: u.email,
+      contact: u.contact,
+      address: u.address,
+      description: u.description
+    },
+    billingHistory: parsedData.billingHistory || [],
+    employees: parsedData.employees || [],
+    complianceRecords: parsedData.complianceRecords || [],
+    data: parsedData,
+    exportedAt: new Date().toISOString(),
+    version: "1.0"
+  });
+});
+
+// POST /api/users/:username/data (Save full live user data)
+app.post(['/api/users/:username/data', '/users/:username/data', '/api/api/users/:username/data'], async (req, res) => {
+  const { username } = req.params;
+  const payload = req.body.data || req.body;
+  const dataToSave = JSON.stringify(payload);
+
+  if (db) {
+    try {
+      await db.query('UPDATE users SET data=$1 WHERE username=$2', [dataToSave, username]);
+      return res.json({ success: true, message: 'User data saved to PostgreSQL' });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
+    }
+  }
+
+  const u = memUsers.find(x => x.username === username);
+  if (u) {
+    u.data = dataToSave;
+    return res.json({ success: true, message: 'User data saved in memory' });
+  }
+  return res.status(404).json({ success: false, message: 'User not found' });
+});
+
+// POST /api/users/:username/restore (Append restored JSON data without overriding)
+app.post(['/api/users/:username/restore', '/users/:username/restore', '/api/api/users/:username/restore', '/api/backup/:username/restore', '/backup/:username/restore'], async (req, res) => {
+  const { username } = req.params;
+  const restoredPayload = req.body; // JSON backup file object
+
+  let existingData = { billingHistory: [], employees: [], complianceRecords: [] };
+
+  if (db) {
+    try {
+      const result = await db.query('SELECT data FROM users WHERE username=$1', [username]);
+      if (result.rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+      if (result.rows[0].data) {
+        try {
+          existingData = JSON.parse(result.rows[0].data);
+        } catch (e) {}
+      }
+
+      // APPEND LOGIC: Keep all existing records and append uploaded records with unique IDs
+      const mergedBilling = [
+        ...(existingData.billingHistory || []),
+        ...(restoredPayload.billingHistory || []).map((item, idx) => ({
+          ...item,
+          id: Date.now() + idx + Math.floor(Math.random() * 10000)
+        }))
+      ];
+
+      const mergedEmployees = [
+        ...(existingData.employees || []),
+        ...(restoredPayload.employees || []).map((item, idx) => ({
+          ...item,
+          id: Date.now() + idx + Math.floor(Math.random() * 10000)
+        }))
+      ];
+
+      const mergedCompliance = [
+        ...(existingData.complianceRecords || []),
+        ...(restoredPayload.complianceRecords || []).map((item, idx) => ({
+          ...item,
+          id: Date.now() + idx + Math.floor(Math.random() * 10000)
+        }))
+      ];
+
+      const merged = {
+        ...existingData,
+        billingHistory: mergedBilling,
+        employees: mergedEmployees,
+        complianceRecords: mergedCompliance,
+        lastRestoredAt: new Date().toISOString()
+      };
+
+      await db.query('UPDATE users SET data=$1 WHERE username=$2', [JSON.stringify(merged), username]);
+      return res.json({
+        success: true,
+        message: `Data appended successfully to PostgreSQL for company ${username}!`,
+        mergedData: merged
+      });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
+    }
+  }
+
+  // Memory fallback
+  const u = memUsers.find(x => x.username === username);
+  if (!u) return res.status(404).json({ success: false, message: 'User not found' });
+  if (u.data) {
+    try {
+      existingData = typeof u.data === 'string' ? JSON.parse(u.data) : u.data;
+    } catch (e) {}
+  }
+
+  const mergedBilling = [
+    ...(existingData.billingHistory || []),
+    ...(restoredPayload.billingHistory || []).map((item, idx) => ({
+      ...item,
+      id: Date.now() + idx + Math.floor(Math.random() * 10000)
+    }))
+  ];
+
+  const mergedEmployees = [
+    ...(existingData.employees || []),
+    ...(restoredPayload.employees || []).map((item, idx) => ({
+      ...item,
+      id: Date.now() + idx + Math.floor(Math.random() * 10000)
+    }))
+  ];
+
+  const merged = {
+    ...existingData,
+    billingHistory: mergedBilling,
+    employees: mergedEmployees,
+    lastRestoredAt: new Date().toISOString()
+  };
+
+  u.data = JSON.stringify(merged);
+  return res.json({
+    success: true,
+    message: `Data appended successfully in memory for ${username}!`,
+    mergedData: merged
+  });
 });
 
 // ─────────────────────────────────────────────────────────────
