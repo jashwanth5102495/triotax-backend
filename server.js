@@ -72,17 +72,17 @@ let nextId = 1;
 // ROUTES (Supporting route aliases to handle /api/users, /users, /api/api/users)
 // ─────────────────────────────────────────────────────────────
 
-// Health check
+// Health check (Lightweight ping endpoint for connection monitoring)
 app.get(['/api/health', '/health', '/api/api/health'], async (req, res) => {
-  if (db) {
+  if (req.query.full === 'true' && db) {
     try {
       const result = await db.query('SELECT COUNT(*) FROM users WHERE role=$1', ['USER']);
-      return res.json({ status: 'ok', mode: 'postgresql', totalUsers: parseInt(result.rows[0].count) });
+      return res.json({ status: 'ok', mode: 'postgresql', totalUsers: parseInt(result.rows[0].count), timestamp: new Date().toISOString() });
     } catch (e) {
-      return res.json({ status: 'ok', mode: 'postgresql-error', error: e.message });
+      return res.json({ status: 'ok', mode: 'postgresql-error', error: e.message, timestamp: new Date().toISOString() });
     }
   }
-  res.json({ status: 'ok', mode: 'in-memory', totalUsers: memUsers.length });
+  res.json({ status: 'ok', mode: db ? 'postgresql' : 'in-memory', timestamp: new Date().toISOString() });
 });
 
 // POST /api/login
