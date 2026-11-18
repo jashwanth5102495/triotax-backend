@@ -188,14 +188,24 @@ app.get(['/api/users/:username/data', '/users/:username/data', '/api/api/users/:
           email: user.email,
           contact: user.contact,
           address: user.address,
-          description: user.description
+          description: user.description,
+          ...(parsedData.companyProfile || {})
         },
         billingHistory: parsedData.billingHistory || [],
+        clientMaster: parsedData.clientMaster || [],
+        itemMaster: parsedData.itemMaster || [],
+        quotations: parsedData.quotations || [],
+        creditDebitNotes: parsedData.creditDebitNotes || [],
+        purchases: parsedData.purchases || [],
+        expenses: parsedData.expenses || [],
+        payments: parsedData.payments || [],
+        documents: parsedData.documents || [],
         employees: parsedData.employees || [],
         complianceRecords: parsedData.complianceRecords || [],
+        complianceTasks: parsedData.complianceTasks || [],
         data: parsedData,
         exportedAt: new Date().toISOString(),
-        version: "1.0"
+        version: "2.0"
       });
     } catch (e) {
       return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
@@ -214,14 +224,24 @@ app.get(['/api/users/:username/data', '/users/:username/data', '/api/api/users/:
       email: u.email,
       contact: u.contact,
       address: u.address,
-      description: u.description
+      description: u.description,
+      ...(parsedData.companyProfile || {})
     },
     billingHistory: parsedData.billingHistory || [],
+    clientMaster: parsedData.clientMaster || [],
+    itemMaster: parsedData.itemMaster || [],
+    quotations: parsedData.quotations || [],
+    creditDebitNotes: parsedData.creditDebitNotes || [],
+    purchases: parsedData.purchases || [],
+    expenses: parsedData.expenses || [],
+    payments: parsedData.payments || [],
+    documents: parsedData.documents || [],
     employees: parsedData.employees || [],
     complianceRecords: parsedData.complianceRecords || [],
+    complianceTasks: parsedData.complianceTasks || [],
     data: parsedData,
     exportedAt: new Date().toISOString(),
-    version: "1.0"
+    version: "2.0"
   });
 });
 
@@ -253,7 +273,21 @@ app.post(['/api/users/:username/restore', '/users/:username/restore', '/api/api/
   const { username } = req.params;
   const restoredPayload = req.body; // JSON backup file object
 
-  let existingData = { billingHistory: [], employees: [], complianceRecords: [] };
+  let existingData = {
+    billingHistory: [],
+    clientMaster: [],
+    itemMaster: [],
+    quotations: [],
+    creditDebitNotes: [],
+    purchases: [],
+    expenses: [],
+    payments: [],
+    documents: [],
+    employees: [],
+    complianceRecords: [],
+    complianceTasks: [],
+    companyProfile: {}
+  };
 
   if (db) {
     try {
@@ -265,36 +299,32 @@ app.post(['/api/users/:username/restore', '/users/:username/restore', '/api/api/
         } catch (e) {}
       }
 
-      // APPEND LOGIC: Keep all existing records and append uploaded records with unique IDs
-      const mergedBilling = [
-        ...(existingData.billingHistory || []),
-        ...(restoredPayload.billingHistory || []).map((item, idx) => ({
+      const appendItems = (existing = [], incoming = []) => [
+        ...(existing || []),
+        ...(incoming || []).map((item, idx) => ({
           ...item,
-          id: Date.now() + idx + Math.floor(Math.random() * 10000)
-        }))
-      ];
-
-      const mergedEmployees = [
-        ...(existingData.employees || []),
-        ...(restoredPayload.employees || []).map((item, idx) => ({
-          ...item,
-          id: Date.now() + idx + Math.floor(Math.random() * 10000)
-        }))
-      ];
-
-      const mergedCompliance = [
-        ...(existingData.complianceRecords || []),
-        ...(restoredPayload.complianceRecords || []).map((item, idx) => ({
-          ...item,
-          id: Date.now() + idx + Math.floor(Math.random() * 10000)
+          id: item.id ? (typeof item.id === 'string' ? item.id + '-restored-' + (idx + 1) : Date.now() + idx + Math.floor(Math.random() * 10000)) : (Date.now() + idx + Math.floor(Math.random() * 10000))
         }))
       ];
 
       const merged = {
         ...existingData,
-        billingHistory: mergedBilling,
-        employees: mergedEmployees,
-        complianceRecords: mergedCompliance,
+        companyProfile: {
+          ...(existingData.companyProfile || {}),
+          ...(restoredPayload.companyProfile || {})
+        },
+        billingHistory: appendItems(existingData.billingHistory, restoredPayload.billingHistory),
+        clientMaster: appendItems(existingData.clientMaster, restoredPayload.clientMaster),
+        itemMaster: appendItems(existingData.itemMaster, restoredPayload.itemMaster),
+        quotations: appendItems(existingData.quotations, restoredPayload.quotations),
+        creditDebitNotes: appendItems(existingData.creditDebitNotes, restoredPayload.creditDebitNotes),
+        purchases: appendItems(existingData.purchases, restoredPayload.purchases),
+        expenses: appendItems(existingData.expenses, restoredPayload.expenses),
+        payments: appendItems(existingData.payments, restoredPayload.payments),
+        documents: appendItems(existingData.documents, restoredPayload.documents),
+        employees: appendItems(existingData.employees, restoredPayload.employees),
+        complianceRecords: appendItems(existingData.complianceRecords, restoredPayload.complianceRecords),
+        complianceTasks: restoredPayload.complianceTasks && restoredPayload.complianceTasks.length > 0 ? restoredPayload.complianceTasks : (existingData.complianceTasks || []),
         lastRestoredAt: new Date().toISOString()
       };
 
@@ -318,26 +348,32 @@ app.post(['/api/users/:username/restore', '/users/:username/restore', '/api/api/
     } catch (e) {}
   }
 
-  const mergedBilling = [
-    ...(existingData.billingHistory || []),
-    ...(restoredPayload.billingHistory || []).map((item, idx) => ({
+  const appendItems = (existing = [], incoming = []) => [
+    ...(existing || []),
+    ...(incoming || []).map((item, idx) => ({
       ...item,
-      id: Date.now() + idx + Math.floor(Math.random() * 10000)
-    }))
-  ];
-
-  const mergedEmployees = [
-    ...(existingData.employees || []),
-    ...(restoredPayload.employees || []).map((item, idx) => ({
-      ...item,
-      id: Date.now() + idx + Math.floor(Math.random() * 10000)
+      id: item.id ? (typeof item.id === 'string' ? item.id + '-restored-' + (idx + 1) : Date.now() + idx + Math.floor(Math.random() * 10000)) : (Date.now() + idx + Math.floor(Math.random() * 10000))
     }))
   ];
 
   const merged = {
     ...existingData,
-    billingHistory: mergedBilling,
-    employees: mergedEmployees,
+    companyProfile: {
+      ...(existingData.companyProfile || {}),
+      ...(restoredPayload.companyProfile || {})
+    },
+    billingHistory: appendItems(existingData.billingHistory, restoredPayload.billingHistory),
+    clientMaster: appendItems(existingData.clientMaster, restoredPayload.clientMaster),
+    itemMaster: appendItems(existingData.itemMaster, restoredPayload.itemMaster),
+    quotations: appendItems(existingData.quotations, restoredPayload.quotations),
+    creditDebitNotes: appendItems(existingData.creditDebitNotes, restoredPayload.creditDebitNotes),
+    purchases: appendItems(existingData.purchases, restoredPayload.purchases),
+    expenses: appendItems(existingData.expenses, restoredPayload.expenses),
+    payments: appendItems(existingData.payments, restoredPayload.payments),
+    documents: appendItems(existingData.documents, restoredPayload.documents),
+    employees: appendItems(existingData.employees, restoredPayload.employees),
+    complianceRecords: appendItems(existingData.complianceRecords, restoredPayload.complianceRecords),
+    complianceTasks: restoredPayload.complianceTasks && restoredPayload.complianceTasks.length > 0 ? restoredPayload.complianceTasks : (existingData.complianceTasks || []),
     lastRestoredAt: new Date().toISOString()
   };
 
