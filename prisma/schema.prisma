@@ -23,6 +23,72 @@ model User {
   updatedAt   DateTime @updatedAt
 }
 
+model Lead {
+  id              String         @id @default(uuid())
+  sequenceNumber  Int            // 1, 2, 3... campaign sequence
+  businessName    String
+  contactPerson   String?
+  phone           String
+  email           String?
+  city            String?
+  state           String?
+  campaignName    String         @default("General")
+  status          String         @default("AVAILABLE") 
+  // Statuses: AVAILABLE, LOCKED, CALLING, RESPONSE_PENDING, COMPLETED
+  outcome         String?        
+  // Outcomes: INTERESTED, FOLLOW_UP_REQUIRED, NOT_INTERESTED, CLOSED, WRONG_NUMBER, NO_ANSWER
+  assignedToId    String?
+  assignedTo      MarketingStaff? @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  responses       LeadResponse[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([status])
+  @@index([sequenceNumber])
+  @@index([assignedToId])
+}
+
+model LeadResponse {
+  id              String         @id @default(uuid())
+  leadId          String
+  lead            Lead           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId          String
+  user            MarketingStaff? @relation(fields: [userId], references: [id])
+  outcome         String         // INTERESTED, FOLLOW_UP_REQUIRED, NOT_INTERESTED, CLOSED, etc.
+  notes           String
+  followUpDate    DateTime?
+  followUpNote    String?
+  dealValue       Float?         @default(0)
+  createdAt       DateTime       @default(now())
+
+  @@index([leadId])
+  @@index([userId])
+  @@index([outcome])
+}
+
+model Campaign {
+  id              String   @id @default(uuid())
+  name            String
+  totalLeads      Int      @default(0)
+  completedLeads  Int      @default(0)
+  uploadedById    String
+  createdAt       DateTime @default(now())
+}
+
+model MarketingStaff {
+  id          String         @id @default(uuid())
+  employeeId  String         @unique // e.g. TX-M-00020
+  name        String
+  email       String         @unique
+  role        String         @default("Tele-Marketing Specialist")
+  phone       String?
+  password    String         @default("staff123")
+  leads       Lead[]         @relation("AssignedLeads")
+  responses   LeadResponse[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
 enum Role {
   ADMIN
   USER

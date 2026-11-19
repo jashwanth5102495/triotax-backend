@@ -51,6 +51,19 @@ if (process.env.DATABASE_URL) {
     `).then(() => {
       console.log('✅ Connected to PostgreSQL database');
       db.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS data TEXT;').catch(() => {});
+      
+      // Create marketing tables
+      db.query(`
+        CREATE TABLE IF NOT EXISTS marketing_store (
+          key VARCHAR(100) PRIMARY KEY,
+          data TEXT NOT NULL,
+          updated_at TIMESTAMP DEFAULT NOW()
+        )
+      `).then(() => {
+        console.log('✅ Marketing tables initialized in PostgreSQL');
+      }).catch(err => {
+        console.error('❌ Marketing table creation error:', err.message);
+      });
     }).catch(err => {
       console.error('❌ DB table creation error:', err.message);
     });
@@ -67,6 +80,11 @@ if (process.env.DATABASE_URL) {
 // ─────────────────────────────────────────────────────────────
 let memUsers = [];
 let nextId = 1;
+let memMarketing = {
+  campaigns: [],
+  leads: [],
+  staff: []
+};
 
 // ─────────────────────────────────────────────────────────────
 // ROUTES (Supporting route aliases to handle /api/users, /users, /api/api/users)
@@ -383,6 +401,54 @@ app.post(['/api/users/:username/restore', '/users/:username/restore', '/api/api/
     message: `Data appended successfully in memory for ${username}!`,
     mergedData: merged
   });
+});
+
+// ─────────────────────────────────────────────────────────────
+// MARKETING DATA & STAFF CALLING ENDPOINTS (POSTGRESQL & MEMORY)
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/marketing/data
+app.get(['/api/marketing/data', '/marketing/data', '/api/api/marketing/data'], async (req, res) => {
+  if (db) {
+    try {
+      const result = await db.query('SELECT data FROM marketing_store WHERE key=$1', ['marketing_master_data']);
+      if (result.rows.length > 0 && result.rows[0].data) {
+        const parsed = JSON.parse(result.rows[0].data);
+        return res.json({ success: true, mode: 'postgresql', ...parsed });
+      }
+    } catch (e) {
+      console.warn('DB marketing fetch error:', e.message);
+    }
+  }
+  return res.json({ success: true, mode: db ? 'postgresql-empty' : 'in-memory', ...memMarketing });
+});
+
+// POST /api/marketing/data
+app.post(['/api/marketing/data', '/marketing/data', '/api/api/marketing/data'], async (req, res) => {
+  const { campaigns, leads, staff } = req.body;
+  const payload = {
+    campaigns: campaigns || [],
+    leads: leads || [],
+    staff: staff || [],
+    updatedAt: new Date().toISOString()
+  };
+  const jsonStr = JSON.stringify(payload);
+
+  if (db) {
+    try {
+      await db.query(`
+        INSERT INTO marketing_store (key, data, updated_at)
+        VALUES ('marketing_master_data', $1, NOW())
+        ON CONFLICT (key) DO UPDATE SET data = $1, updated_at = NOW()
+      `, [jsonStr]);
+      return res.json({ success: true, message: 'Marketing data successfully saved to PostgreSQL database', mode: 'postgresql' });
+    } catch (e) {
+      return res.status(500).json({ success: false, message: 'Database error: ' + e.message });
+    }
+  }
+
+  memMarketing = payload;
+  return res.json({ success: true, message: 'Marketing data saved in-memory', mode: 'in-memory' });
 });
 
 // ─────────────────────────────────────────────────────────────
