@@ -83,7 +83,8 @@ let nextId = 1;
 let memMarketing = {
   campaigns: [],
   leads: [],
-  staff: []
+  staff: [],
+  targets: []
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -425,11 +426,12 @@ app.get(['/api/marketing/data', '/marketing/data', '/api/api/marketing/data'], a
 
 // POST /api/marketing/data
 app.post(['/api/marketing/data', '/marketing/data', '/api/api/marketing/data'], async (req, res) => {
-  const { campaigns, leads, staff } = req.body;
+  const { campaigns, leads, staff, targets } = req.body;
   const payload = {
     campaigns: campaigns || [],
     leads: leads || [],
     staff: staff || [],
+    targets: targets || [],
     updatedAt: new Date().toISOString()
   };
   const jsonStr = JSON.stringify(payload);
